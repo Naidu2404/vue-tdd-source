@@ -1,0 +1,28 @@
+{
+    "signUp": "Sign Up",
+    "username": "Username",
+    "email": "E-mail",
+    "password": "Password",
+    "passwordRepeat": "Password Repeat",
+    "passwordMismatch": "Password mismatch",
+    "genericError": "Unexpected error occurred, please try again",
+    "passwordReset": {
+        "request": "Reset password",
+        "set": "Set password",
+        "forgot": "Forgot password?"
+    },
+    "userList": {
+        "header": "Users",
+        "next": "Next",
+        "previous": "Previous"
+    },
+    "login": "Login",
+    "logout": "Logout",
+    "deleteUser": {
+        "button": "Delete",
+        "confirm": "Are you sure?"
+    },
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel"
+}
