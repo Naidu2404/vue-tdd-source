@@ -1,12 +1,13 @@
 <template>
   <Card>
     <template v-slot:header>
-      <img
+      <ProfileImage
         class="rounded-circle shadow"
         width="200"
         height="200"
         :alt="user.username + ' profile'"
-        src="@/assets/profile.png"
+        :tempImage="tempImage"
+        :image="image"
       />
     </template>
     <template v-slot:body>
@@ -19,13 +20,18 @@
           <div class="mt-3"></div>
           <UserDeleteButton :id="user.id" />
         </template>
-        <EditForm v-if="editMode" @cancel="editMode = false" @save="editMode = false" />
+        <EditForm
+          v-if="editMode"
+          @cancel="onEditFinish"
+          @save="onEditFinish"
+          @newImage="onNewImage"
+        />
       </div>
     </template>
   </Card>
 </template>
 <script setup>
-import { AppButton, Card } from '@/components'
+import { AppButton, Card, ProfileImage } from '@/components'
 import UserDeleteButton from './UserDeleteButton.vue'
 
 import { useAuthStore } from '@/stores/auth'
@@ -37,6 +43,17 @@ const props = defineProps({
 })
 
 const editMode = ref(false)
+const tempImage = ref()
 const { auth } = useAuthStore()
 const username = computed(() => (auth.id === props.user.id ? auth.username : props.user.username))
+const image = computed(() => (auth.id === props.user.id ? auth.image : props.user.image))
+
+const onNewImage = (data) => {
+  tempImage.value = data
+}
+
+const onEditFinish = () => {
+  editMode.value = false
+  tempImage.value = undefined
+}
 </script>

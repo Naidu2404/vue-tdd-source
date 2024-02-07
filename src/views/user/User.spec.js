@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { setupServer } from 'msw/node'
 import { HttpResponse, http, delay } from 'msw'
 import User from './User.vue'
-import { render, screen, router, waitFor } from 'test/helper'
+import { render, screen, router, waitFor, getByAltText } from 'test/helper'
 import { i18n } from '@/locales'
 
 let counter = 0
@@ -258,6 +258,72 @@ describe('User Page', () => {
           expect(screen.queryByRole('button', { name: 'Cancel' })).toBeInTheDocument()
         })
 
+        it('displays file upload input', async () => {
+          const {
+            user,
+            elements: { editButton }
+          } = await setupPageLoaded()
+          await user.click(editButton)
+          const fileUploadInput = screen.getByLabelText('Select Image')
+          expect(fileUploadInput).toHaveAttribute('type', 'file')
+        })
+
+        describe('when user selects photo', () => {
+          it('displays in existing profile picture', async () => {
+            const {
+              user,
+              elements: { editButton }
+            } = await setupPageLoaded()
+            await user.click(editButton)
+            const fileUploadInput = screen.getByLabelText('Select Image')
+            await user.upload(
+              fileUploadInput,
+              new File(['hello'], 'hello.png', { type: 'image/png' })
+            )
+            const image = screen.getByAltText('user3 profile')
+            await waitFor(() => {
+              expect(image).toHaveAttribute('src', 'data:image/png;base64,aGVsbG8=')
+            })
+          })
+
+          describe('when user clicks cancel', () => {
+            it('displays default image', async () => {
+              const {
+                user,
+                elements: { editButton }
+              } = await setupPageLoaded()
+              await user.click(editButton)
+              const fileUploadInput = screen.getByLabelText('Select Image')
+              await user.upload(
+                fileUploadInput,
+                new File(['hello'], 'hello.png', { type: 'image/png' })
+              )
+              await user.click(screen.queryByRole('button', { name: 'Cancel' }))
+              const image = screen.getByAltText('user3 profile')
+              await waitFor(() => {
+                expect(image).toHaveAttribute('src', '/src/assets/profile.png')
+              })
+            })
+          })
+        })
+
+        describe('when username is changed', () => {
+          describe('when user clicks cancel', () => {
+            it('displays initial username', async () => {
+              const {
+                user,
+                elements: { editButton }
+              } = await setupPageLoaded()
+              await user.click(editButton)
+              await user.type(screen.getByLabelText('Username'), '-updated')
+              await user.click(screen.queryByRole('button', { name: 'Cancel' }))
+              await waitFor(() => {
+                expect(screen.queryByText('user3')).toBeInTheDocument()
+              })
+            })
+          })
+        })
+
         describe('when user clicks cancel', () => {
           it('displays username', async () => {
             const {
@@ -295,7 +361,7 @@ describe('User Page', () => {
           it('sends request with updated username', async () => {
             let requestBody
             server.use(
-              http.put('/api/v1/users/:id', async ({ request, params }) => {
+              http.put('/api/v1/users/:id', async ({ request }) => {
                 requestBody = await request.json()
                 return HttpResponse.json({})
               })
@@ -309,6 +375,30 @@ describe('User Page', () => {
             await user.click(screen.getByRole('button', { name: 'Save' }))
             await waitFor(() => {
               expect(requestBody).toStrictEqual({ username: 'user3-updated' })
+            })
+          })
+
+          it('sends request with image', async () => {
+            let requestBody
+            server.use(
+              http.put('/api/v1/users/:id', async ({ request }) => {
+                requestBody = await request.json()
+                return HttpResponse.json({})
+              })
+            )
+            const {
+              user,
+              elements: { editButton }
+            } = await setupPageLoaded()
+            await user.click(editButton)
+            const fileUploadInput = screen.getByLabelText('Select Image')
+            await user.upload(
+              fileUploadInput,
+              new File(['hello'], 'hello.png', { type: 'image/png' })
+            )
+            await user.click(screen.getByRole('button', { name: 'Save' }))
+            await waitFor(() => {
+              expect(requestBody).toStrictEqual({ username: 'user3', image: 'aGVsbG8=' })
             })
           })
           describe('when api request in progress', () => {
@@ -363,6 +453,197 @@ describe('User Page', () => {
               await user.click(screen.getByRole('button', { name: 'Save' }))
               await waitFor(() => {
                 expect(screen.getByText('user3-updated')).toBeInTheDocument()
+              })
+            })
+
+            it('displays image served from backend', async () => {
+              server.use(
+                http.put('/api/v1/users/:id', () => {
+                  return HttpResponse.json({ username: 'user3', image: 'uploaded-image.png' })
+                })
+              )
+              const {
+                user,
+                elements: { editButton }
+              } = await setupPageLoaded()
+              await user.click(editButton)
+              const fileUploadInput = screen.getByLabelText('Select Image')
+              await user.upload(
+                fileUploadInput,
+                new File(['hello'], 'hello.png', { type: 'image/png' })
+              )
+              await user.click(screen.getByRole('button', { name: 'Save' }))
+              await screen.findByText('user3')
+              const image = screen.getByAltText('user3 profile')
+              expect(image).toHaveAttribute('src', '/images/uploaded-image.png')
+            })
+          })
+
+          describe('when network failure occurs', () => {
+            it('displays message generic error message', async () => {
+              server.use(
+                http.put('/api/v1/users/:id', () => {
+                  return HttpResponse.error()
+                })
+              )
+              const {
+                user,
+                elements: { editButton }
+              } = await setupPageLoaded()
+              await user.click(editButton)
+              await user.click(screen.getByRole('button', { name: 'Save' }))
+              const text = await screen.findByText('Unexpected error occurred, please try again')
+              expect(text).toBeInTheDocument()
+            })
+
+            it('hides spinner', async () => {
+              server.use(
+                http.put('/api/v1/users/:id', () => {
+                  return HttpResponse.error()
+                })
+              )
+              const {
+                user,
+                elements: { editButton }
+              } = await setupPageLoaded()
+              await user.click(editButton)
+              await user.click(screen.getByRole('button', { name: 'Save' }))
+              await waitFor(() => {
+                expect(screen.queryByRole('status')).not.toBeInTheDocument()
+              })
+            })
+
+            describe('when user submits again', () => {
+              it('hides error when api request in progress', async () => {
+                let processedFirstRequest = false
+                server.use(
+                  http.put('/api/v1/users/:id', async () => {
+                    if (!processedFirstRequest) {
+                      processedFirstRequest = true
+                      return HttpResponse.error()
+                    } else {
+                      await delay('infinite')
+                      return HttpResponse.json({})
+                    }
+                  })
+                )
+                const {
+                  user,
+                  elements: { editButton }
+                } = await setupPageLoaded()
+                await user.click(editButton)
+                await user.click(screen.getByRole('button', { name: 'Save' }))
+                await screen.findByText('Unexpected error occurred, please try again')
+                await user.click(screen.getByRole('button', { name: 'Save' }))
+                await waitFor(() => {
+                  expect(
+                    screen.queryByText('Unexpected error occurred, please try again')
+                  ).not.toBeInTheDocument()
+                })
+              })
+            })
+
+            describe('when username is invalid', () => {
+              it('displays validation error', async () => {
+                server.use(
+                  http.put('/api/v1/users/:id', () => {
+                    return HttpResponse.json(
+                      {
+                        validationErrors: {
+                          username: 'Username cannot be null'
+                        }
+                      },
+                      { status: 400 }
+                    )
+                  })
+                )
+                const {
+                  user,
+                  elements: { editButton }
+                } = await setupPageLoaded()
+                await user.click(editButton)
+                await user.click(screen.getByRole('button', { name: 'Save' }))
+                const validationError = await screen.findByText('Username cannot be null')
+                expect(validationError).toBeInTheDocument()
+              })
+              it('clears validation error after username field is updated', async () => {
+                server.use(
+                  http.put('/api/v1/users/:id', () => {
+                    return HttpResponse.json(
+                      {
+                        validationErrors: {
+                          username: 'Username cannot be null'
+                        }
+                      },
+                      { status: 400 }
+                    )
+                  })
+                )
+                const {
+                  user,
+                  elements: { editButton }
+                } = await setupPageLoaded()
+                await user.click(editButton)
+                await user.click(screen.getByRole('button', { name: 'Save' }))
+                const validationError = await screen.findByText('Username cannot be null')
+                await user.type(screen.getByLabelText('Username'), '-updated')
+                expect(validationError).not.toBeInTheDocument()
+              })
+            })
+
+            describe('when image is invalid', () => {
+              it('displays validation error', async () => {
+                server.use(
+                  http.put('/api/v1/users/:id', () => {
+                    return HttpResponse.json(
+                      {
+                        validationErrors: {
+                          image: 'only png and jpeg files are allowed'
+                        }
+                      },
+                      { status: 400 }
+                    )
+                  })
+                )
+                const {
+                  user,
+                  elements: { editButton }
+                } = await setupPageLoaded()
+                await user.click(editButton)
+                await user.click(screen.getByRole('button', { name: 'Save' }))
+                const validationError = await screen.findByText(
+                  'only png and jpeg files are allowed'
+                )
+                expect(validationError).toBeInTheDocument()
+              })
+              it('clears validation error after user selects new image', async () => {
+                server.use(
+                  http.put('/api/v1/users/:id', () => {
+                    return HttpResponse.json(
+                      {
+                        validationErrors: {
+                          image: 'only png and jpeg files are allowed'
+                        }
+                      },
+                      { status: 400 }
+                    )
+                  })
+                )
+                const {
+                  user,
+                  elements: { editButton }
+                } = await setupPageLoaded()
+                await user.click(editButton)
+                await user.click(screen.getByRole('button', { name: 'Save' }))
+                const validationError = await screen.findByText(
+                  'only png and jpeg files are allowed'
+                )
+                const fileUploadInput = screen.getByLabelText('Select Image')
+                await user.upload(
+                  fileUploadInput,
+                  new File(['hello'], 'hello.png', { type: 'image/png' })
+                )
+                expect(validationError).not.toBeInTheDocument()
               })
             })
           })
